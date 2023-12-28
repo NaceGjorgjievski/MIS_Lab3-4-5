@@ -1,9 +1,12 @@
+import 'package:exam_schedule_app/NotiClass.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:exam_schedule_app/auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:table_calendar/table_calendar.dart';
 
 import '../exam.dart';
+import 'calendar_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -19,6 +22,9 @@ class _HomePageState extends State<HomePage>{
   final TextEditingController _controllerExamName = TextEditingController();
   final TextEditingController _controllerDate = TextEditingController();
   DateTime _selectedDate = DateTime.now();
+  Map<DateTime, List<Exam>> _events = {};
+
+  NotificationServices notificationServices = NotificationServices();
 
   final User? user = Auth().currentUser;
 
@@ -74,6 +80,7 @@ class _HomePageState extends State<HomePage>{
           ElevatedButton(
               onPressed: (){
                 _createExam();
+                notificationServices.scheduleNotification(_events);
                 Navigator.of(context).pop();
               },
               child: Text('Add'),
@@ -127,12 +134,41 @@ class _HomePageState extends State<HomePage>{
     }
   }
 
+  void _updateEvents(List<Exam> exams){
+    _events = {};
+    for (var exam in exams) {
+      DateTime date = DateTime(
+        exam.dateTime.year,
+        exam.dateTime.month,
+        exam.dateTime.day,
+      );
+
+      if (_events[date] == null) {
+        _events[date] = [];
+      }
+
+      _events[date]!.add(exam);
+    }
+  }
+
+
+
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: _title(),
         actions: <Widget>[
+          IconButton(
+              onPressed: (){
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => CalendarPage(events: _events,))
+                );
+              },
+              icon: const Icon(Icons.calendar_month)),
           IconButton(onPressed: ()=>_showAddExamDialog(context), icon: const Icon(Icons.add))
         ],
       ),
@@ -154,6 +190,7 @@ class _HomePageState extends State<HomePage>{
                   builder: (context, snapshot) {
                     if(snapshot.hasData){
                       List<Exam> exams = snapshot.data!;
+                      _updateEvents(exams);
                       return GridView.builder(
                           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                             crossAxisCount: 2,
