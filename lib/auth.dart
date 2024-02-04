@@ -1,3 +1,4 @@
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -39,6 +40,8 @@ class Auth {
   Future<void> createExam({
     required String name,
     required DateTime dateTime,
+    required double latitude,
+    required double longitude,
   }) async{
     try{
       User? user = _firebaseAuth.currentUser;
@@ -48,6 +51,8 @@ class Auth {
           'userId': user.uid,
           'name': name,
           'dateTime': dateTime,
+          'latitude': latitude,
+          'longitude': longitude,
         });
       }
     } on FirebaseAuthException catch (e){
@@ -69,6 +74,8 @@ class Auth {
               return Exam(
                 name: data['name'],
                 dateTime: (data['dateTime'] as Timestamp).toDate(),
+                latitude: data['latitude'],
+                longitude: data['longitude'],
               );
             }).toList();
       });

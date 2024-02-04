@@ -41,6 +41,11 @@ dependencies:
   intl: ^0.17.0
   table_calendar: ^3.0.3
   flutter_local_notifications:
+  geolocator: ^10.1.0
+  permission_handler: ^10.1.0
+  dio: ^5.4.0
+  flutter_polyline_points: ^2.0.0
+  google_maps_flutter: ^2.5.0
 
 
 dev_dependencies:

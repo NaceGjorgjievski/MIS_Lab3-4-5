@@ -1,9 +1,14 @@
 import 'package:exam_schedule_app/NotiClass.dart';
+import 'package:exam_schedule_app/pages/directions_page.dart';
+import 'package:exam_schedule_app/pages/map_page.dart';
+import 'package:exam_schedule_app/pages/set_location_map_page.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:exam_schedule_app/auth.dart';
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../exam.dart';
 import 'calendar_page.dart';
@@ -21,8 +26,16 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage>{
   final TextEditingController _controllerExamName = TextEditingController();
   final TextEditingController _controllerDate = TextEditingController();
+  final TextEditingController _controllerLocation = TextEditingController();
+
   DateTime _selectedDate = DateTime.now();
   Map<DateTime, List<Exam>> _events = {};
+  List<Marker> markers = [];
+
+  double? examLongitude;
+  double? examLatitude;
+
+  Position? userPosition;
 
   NotificationServices notificationServices = NotificationServices();
 
@@ -47,28 +60,62 @@ class _HomePageState extends State<HomePage>{
     );
   }
 
+  Future<void> _showSetLocation(BuildContext context) async{
+    LatLng? selectedLocation = await showDialog(
+      context: context,
+      builder: (BuildContext context){
+        return SetLocationMapPage();
+      },
+    );
+
+    if(selectedLocation != null){
+      setState(() {
+        _controllerLocation.text = "(${selectedLocation.latitude}, ${selectedLocation.longitude})";
+        examLongitude = selectedLocation.longitude;
+        examLatitude = selectedLocation.latitude;
+      });
+    } else {
+      _controllerLocation.text = "No location selected";
+    }
+  }
+
   Future<void> _showAddExamDialog(BuildContext context) async{
     return showDialog(context: context, builder: (BuildContext context){
       return AlertDialog(
         title: Text('Add Exam'),
-        content: Column(
-          children: <Widget>[
-            TextField(
-              controller: _controllerExamName,
-              decoration: const InputDecoration(labelText: 'Exam Name'),
-            ),
-            TextField(
-              readOnly: true,
-              enabled: false,
-              enableInteractiveSelection: false,
-              controller: _controllerDate,
-              decoration: const InputDecoration(labelText: 'Date'),
-            ),
-            ElevatedButton(
-              onPressed: ()=>_selectDate(context),
-              child: Text('Select Date'),
-            ),
-          ],
+        content: SingleChildScrollView(
+          child: Column(
+            children: <Widget>[
+              TextField(
+                controller: _controllerExamName,
+                decoration: const InputDecoration(labelText: 'Exam Name'),
+              ),
+              TextField(
+                readOnly: true,
+                enabled: false,
+                enableInteractiveSelection: false,
+                controller: _controllerDate,
+                decoration: const InputDecoration(labelText: 'Date'),
+              ),
+              TextField(
+                readOnly: true,
+                enabled: false,
+                enableInteractiveSelection: false,
+                controller: _controllerLocation,
+                decoration: const InputDecoration(labelText: 'Location'),
+              ),
+              ElevatedButton(
+                onPressed: ()=>_selectDate(context),
+                child: const Text('Select Date'),
+              ),
+              ElevatedButton(
+                onPressed: (){
+                  _showSetLocation(context);
+                },
+                child: const Text('Set Location'),
+              ),
+            ],
+          ),
         ),
         actions: <Widget>[
           ElevatedButton(
@@ -126,9 +173,13 @@ class _HomePageState extends State<HomePage>{
       await Auth().createExam(
         name: _controllerExamName.text,
         dateTime: _selectedDate,
+        latitude: examLatitude ?? 0,
+        longitude: examLongitude ?? 0,
       );
 
       _controllerExamName.clear();
+      _controllerDate.clear();
+      _controllerLocation.clear();
     } on FirebaseAuthException catch(e){
       Text('Error creating exam: $e');
     }
@@ -149,7 +200,59 @@ class _HomePageState extends State<HomePage>{
 
       _events[date]!.add(exam);
     }
+
+    for(Exam exam in exams){
+      markers.add(Marker(
+        markerId: const MarkerId('location'),
+        infoWindow:  InfoWindow(title: exam.name,),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+        position: LatLng(exam.latitude,exam.longitude),
+      ));
+    }
+
+
   }
+
+  Marker _makeMarker(Exam exam){
+    return Marker(
+      markerId: const MarkerId('location'),
+      infoWindow:  InfoWindow(title: exam.name,),
+      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueOrange),
+      position: LatLng(exam.latitude,exam.longitude),
+    );
+  }
+
+  Future<Position> _determinePosition() async {
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      return Future.error('Location services are disabled.');
+    }
+
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        return Future.error('Location permissions are denied');
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      return Future.error(
+          'Location permissions are permanently denied, we cannot request permissions.');
+    }
+
+    return await Geolocator.getCurrentPosition();
+  }
+
+  void _savePostion() async{
+    userPosition = await _determinePosition();
+  }
+
+
+
 
 
 
@@ -161,6 +264,14 @@ class _HomePageState extends State<HomePage>{
       appBar: AppBar(
         title: _title(),
         actions: <Widget>[
+          IconButton(
+              onPressed: (){
+                Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) =>  MapPage(markers: markers,))
+                );
+              },
+              icon: const Icon(Icons.map_sharp)),
           IconButton(
               onPressed: (){
                 Navigator.push(
@@ -204,10 +315,29 @@ class _HomePageState extends State<HomePage>{
                                 side: const BorderSide(width: 2.0, color: Colors.black),
                                 borderRadius: BorderRadius.circular(8.0)
                               ),
-                              child: ListTile(
-                                title: Text(exams[index].name, style: const TextStyle(fontWeight: FontWeight.bold),),
-                                subtitle: Text(DateFormat('dd-MM-yyyy HH:mm').format(exams[index].dateTime)),
-                              ),
+                              child: Column(
+                                children: [
+                                  ListTile(
+                                    title: Text(exams[index].name, style: const TextStyle(fontWeight: FontWeight.bold),),
+                                    subtitle: Text(DateFormat('dd-MM-yyyy HH:mm').format(exams[index].dateTime)),
+                                  ),
+                                  ElevatedButton(onPressed: () async {
+                                    Position position = await _determinePosition();
+                                    Marker userMarker = Marker(
+                                      markerId: const MarkerId('location'),
+                                      infoWindow:  InfoWindow(title: 'My location',),
+                                      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+                                      position: LatLng(position.latitude,position.longitude),
+                                    );
+                                    if(position != null){
+                                      Navigator.push(
+                                          context,
+                                          MaterialPageRoute(builder: (context) => DirectionsPage(marker: _makeMarker(exams[index]),position: userMarker,)));
+                                    }
+
+                                  },child:Text('Get Direction'))
+                                ],
+                              )
                             );
                           },
                       );

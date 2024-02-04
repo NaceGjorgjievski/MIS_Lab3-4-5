@@ -51,6 +51,8 @@ class NotificationServices{
       }
     }
 
+    firstUpcomingExams?.sort((a,b) => a.dateTime.compareTo(b.dateTime));
+
     if (firstUpcomingDateTime != null && firstUpcomingExams != null) {
       initialNotification();
       AndroidNotificationDetails androidNotificationDetails = const AndroidNotificationDetails(
